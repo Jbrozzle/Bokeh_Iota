@@ -75,6 +75,7 @@ class BokehApp:
         return plot, source, patch_source
 
     def create_widget(self, data, columns):
+        data['Indexer'] = range(0, len(data))
         source = ColumnDataSource(data)
         if self.app_type == DataTable:
             data_table = DataTable(source=source, columns=columns, width=self.width, height=self.height,
@@ -133,7 +134,8 @@ def main():
     dt_columns = [
         TableColumn(field="Linker", title="Linker", width=50),
         TableColumn(field="Z spread", title="Z Spread", width=75),
-        TableColumn(field='SVG', title='SVG curve', formatter=html_formatter, width=200)
+        TableColumn(field='SVG', title='SVG curve', formatter=html_formatter, width=200),
+        TableColumn(field="Indexer", title="Indexer", width=50),
     ]
 
     main_table = BokehApp(DataTable, table_df, dt_formatters, dt_tools, height=1000, width=325)
@@ -158,12 +160,11 @@ def main():
                      { column = j }
          }
      }
-
+     console.log(max)
      console.log(row)
      const new_data = Object.assign({}, row_col.data)
      new_data.row = [row]
      row_col.data = new_data;
-
      """
     row_col_dict = {'row': [0], 'col_1': [0]}
     row_col = ColumnDataSource(row_col_dict)
@@ -171,9 +172,9 @@ def main():
     table_ds.selected.js_on_change('indices', callback)
 
     def py_callback(attr, old, new):
-        selected_index = (row_col.data)['row']
-        new_y_col = bonds[selected_index]
 
+        selected_index = table_ds.selected.indices
+        new_y_col = bonds[selected_index]
         df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh_Iota/LinkerTimeSeries.csv')
         xvals = np.array(pd.to_datetime(df['Date'], format="%m/%d/%Y"))
         df.set_index('Date', inplace=True)
