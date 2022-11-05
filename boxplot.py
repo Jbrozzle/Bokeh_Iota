@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 
 from bokeh.plotting import figure, show
-
-
 import matplotlib.pyplot as plt
 import numpy as np
 import io
@@ -157,7 +155,7 @@ def matplot_svg(fig):
 import xml.dom.minidom
 
 def main():
-    df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh Scripts/Iota/LinkerTimeSeries.csv')
+    df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh_Iota/LinkerTimeSeries.csv')
     df.set_index('Date', inplace=True)
     bonds = df.columns
     live = 25

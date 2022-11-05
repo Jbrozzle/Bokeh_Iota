@@ -1,11 +1,6 @@
-# This is a sample Python script.
-
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
-
 
 from bokeh.models import DataTable, ColumnDataSource, TableColumn, \
-    HTMLTemplateFormatter, Patch, CustomJS
+    HTMLTemplateFormatter, Patch, CustomJS, HoverTool
 from bokeh.layouts import column, row
 from boxplot import *
 from bokeh.io import curdoc
@@ -14,13 +9,24 @@ import numpy as np
 from bokeh.plotting import figure, show
 
 
+def get_sma(prices, rate):
+    return prices.rolling(rate).mean()
+
+def get_bollinger_bands(prices, rate):
+    sma = get_sma(prices, rate) # <-- Get SMA for 20 days
+    std = prices.rolling(rate).std()
+    upper = sma + std * 1.5 # Calculate top band
+    lower = sma - std * 1.5 # Calculate bottom band
+    return upper, lower
+
 class BokehApp:
 
-    def __init__(self, type, data, formatters=[], tools=[], x_col='', y_col='', height=200, width=200):
+    def __init__(self, type, data, formatters=[], tools=[], tooltips = [], x_col='', y_col='', height=200, width=200):
         self.app_type = type
         self.src = data
         self.formatters = formatters
         self.tools = tools
+        self.tooltips = tooltips
         self.x_col = x_col if x_col is not None else 0
         self.y_col = y_col if y_col is not None else 0
         self.width = width
@@ -31,26 +37,25 @@ class BokehApp:
                                         'y_values': data[self.y_col]})
         plot = figure(width=self.width, height=self.height)
         if subtype == 'line':
-            xvals = np.array(pd.to_datetime(data[self.x_col], format="%d/%m/%Y"))
+            xvals = np.array(pd.to_datetime(data[self.x_col], format="%m/%d/%Y"))
+            data.index = xvals
+            data.sort_index(inplace=True)
+            xvals = data.index
             source = ColumnDataSource(data={'x_values': xvals,
                                             'y_values': data[self.y_col]})
             plot = figure(width=self.width, height=self.height, x_axis_type='datetime')
             if patch:
                 # do patch work here for standard deviations, make dynamic with slide widgets
-                selected_z = 1.5
-                selected_lookback = 90
-                upper = [i + selected_z * data[self.y_col][max([0, (idx - selected_lookback)]):idx].std()
-                         for idx, i in enumerate(data[self.y_col])][2:]
-                lower = [i - selected_z * data[self.y_col][max([0, (idx - selected_lookback)]):idx].std()
-                         for idx, i in enumerate(data[self.y_col])][2:]
-                patch_y_vals = np.hstack((upper, lower[::-1]))
-                patch_x_vals = np.hstack((xvals[2:], xvals[2:][::-1]))
+                lookback = 25
+                upper, lower = get_bollinger_bands(data[self.y_col], lookback)
+                df = pd.DataFrame({'upper': upper, 'lower': lower, 'Date': xvals}).dropna()
+                patch_y_vals = np.hstack((df['lower'], df['upper'][::-1]))
+                patch_x_vals = np.hstack((df['Date'], df['Date'][::-1]))
                 patch_source = ColumnDataSource(data={'x_values': patch_x_vals,
                                                       'y_values': patch_y_vals})
                 glyph = Patch(x="x_values", y="y_values", fill_color="green", fill_alpha=0.5, line_width=0)
                 plot.add_glyph(patch_source, glyph)
             plot.line(x='x_values', y='y_values', source=source, line_width=2)
-            plot.xaxis.axis_label, plot.yaxis.axis_label = self.x_col, self.y_col
             if fit_line:
                 poly_coefs = np.polyfit(data[self.x_col], data[self.y_col], 3)
                 poly_vals = np.polyval(poly_coefs, np.array(data[self.x_col]))
@@ -96,19 +101,25 @@ def launch(layout_object, server):
 
 
 def main():
-    linker_path = r'/Users/Josh/Desktop/Bokeh Scripts/Iota/LinkerList.csv'
+    linker_path = r'/Users/Josh/Desktop/Bokeh_Iota/LinkerList.csv'
     dt_formatters = [HTMLTemplateFormatter()]
     dt_tools = ['']
 
     plt_formatters = ['']
-    plt_tools = []
+    plt_tools = [HoverTool()]
+
+    tooltips = [
+        ("Linker", '@Linker{%F}'),
+        ("Z spread", '@Z spread{0.00 a}')]
+
     live_df = pd.read_csv(linker_path)
-    main_scatter = BokehApp(figure(), live_df, plt_formatters, plt_tools,
+    main_scatter = BokehApp(figure(), live_df, plt_formatters, plt_tools, tooltips,
                             x_col="Maturity", y_col='Z spread', width=400, height=400)
     scatter_plot, scatter_ds, scatter_patch_ds = main_scatter.create_plot(main_scatter.src, "scatter", fit_line=True,
                                                                           patch=False)
-    raw_df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh Scripts/Iota/LinkerTimeSeries.csv')
+    raw_df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh_Iota/LinkerTimeSeries.csv')
     raw_df.set_index('Date', inplace=True)
+    raw_df.sort_index(inplace=True)
     bonds = raw_df.columns
     lives = list(live_df['Z spread'])
     lower, upper = linear_rescale(raw_df)
@@ -129,9 +140,9 @@ def main():
     table, table_ds = main_table.create_widget(main_table.src, columns=dt_columns)
 
     hist_chart = BokehApp(figure(),
-                          pd.read_csv(r'/Users/Josh/Desktop/Bokeh Scripts/Iota/LinkerTimeSeries.csv').dropna(),
+                          pd.read_csv(r'/Users/Josh/Desktop/Bokeh_Iota/LinkerTimeSeries.csv'),
                           plt_formatters, plt_tools,
-                          x_col='Date', y_col='IL26', width=400, height=400)
+                          x_col='Date', y_col='4h34', width=400, height=400)
     hist_chart_plot, hist_chart_ds, hist_patch_ds = hist_chart.create_plot(hist_chart.src, "line", fit_line=False,
                                                                            patch=True)
     # Datable callback
@@ -163,34 +174,32 @@ def main():
         selected_index = (row_col.data)['row']
         new_y_col = bonds[selected_index]
 
-        df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh Scripts/Iota/LinkerTimeSeries.csv').dropna()
-        xvals = np.array(pd.to_datetime(df['Date'], format="%d/%m/%Y"))
-        xvals = xvals[2:]
+        df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh_Iota/LinkerTimeSeries.csv')
+        xvals = np.array(pd.to_datetime(df['Date'], format="%m/%d/%Y"))
         df.set_index('Date', inplace=True)
-        yvals = df[new_y_col]
+        df.index=xvals
+        df.sort_index(inplace=True)
+        xvals = df.index
+        yvals = df[new_y_col].dropna()
         yvals_listed = np.array(yvals)
         yvals = []
-        for sublist in yvals_listed[2:]:
+        for sublist in yvals_listed:
             for item in sublist:
                 yvals.append(item)
 
         yvals = pd.Series(yvals)
         new_data = {'x_values': xvals, 'y_values': yvals}
         hist_chart_ds.data = new_data
-        selected_z = 1.5
-        selected_lookback = 90
-        upper = [i + selected_z * yvals[max([0, (idx - selected_lookback)]):idx].std()
-                 for idx, i in enumerate(list(yvals))]
-        lower = [i - selected_z * yvals[max([0, (idx - selected_lookback)]):idx].std()
-                 for idx, i in enumerate(list(yvals))]
-        upper = upper[2:]
-        lower = lower[2:]
-        patch_y_vals = np.hstack((upper, lower[::-1]))
-        patch_x_vals = np.hstack((xvals[2:], xvals[2:][::-1]))
+        lookback = 25 #point this to a slider value at later date
+        upper, lower = get_bollinger_bands(yvals, lookback)
+        ts_df = pd.DataFrame({'upper': upper, 'lower': lower, 'Date': xvals}).dropna()
+        patch_y_vals = np.hstack((ts_df['lower'], ts_df['upper'][::-1]))
+        patch_x_vals = np.hstack((ts_df['Date'], ts_df['Date'][::-1]))
         new_patch_data = {'x_values': patch_x_vals[:], 'y_values': patch_y_vals[:]}
         hist_patch_ds.data = new_patch_data
         # update chart columns with text
-        # hist_chart_plot.title.text = str(list(df.columns)[selected_index])
+        title = list(df.columns)[int(selected_index[0])]
+        hist_chart_plot.title.text = title
 
 
     table_ds.selected.on_change('indices', py_callback)
