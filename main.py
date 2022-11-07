@@ -7,7 +7,7 @@ from bokeh.io import curdoc
 import pandas as pd
 import numpy as np
 from bokeh.plotting import figure, show
-
+import statistics
 
 def get_sma(prices, rate):
     return prices.rolling(rate).mean()
@@ -134,8 +134,7 @@ def main():
     dt_columns = [
         TableColumn(field="Linker", title="Linker", width=50),
         TableColumn(field="Z spread", title="Z Spread", width=75),
-        TableColumn(field='SVG', title='SVG curve', formatter=html_formatter, width=200),
-        TableColumn(field="Indexer", title="Indexer", width=50),
+        TableColumn(field='SVG', title='SVG curve', formatter=html_formatter, width=200)
     ]
 
     main_table = BokehApp(DataTable, table_df, dt_formatters, dt_tools, height=1000, width=325)
@@ -173,21 +172,54 @@ def main():
 
     def py_callback(attr, old, new):
 
-        selected_index = table_ds.selected.indices
-        new_y_col = bonds[selected_index]
         df = pd.read_csv(r'/Users/Josh/Desktop/Bokeh_Iota/LinkerTimeSeries.csv')
         xvals = np.array(pd.to_datetime(df['Date'], format="%m/%d/%Y"))
         df.set_index('Date', inplace=True)
-        df.index=xvals
+        df.index = xvals
         df.sort_index(inplace=True)
-        xvals = df.index
-        yvals = df[new_y_col].dropna()
-        yvals_listed = np.array(yvals)
-        yvals = []
-        for sublist in yvals_listed:
-            for item in sublist:
-                yvals.append(item)
+        selected_index = table_ds.selected.indices
 
+        if len(selected_index) > 3:
+            selected_index = selected_index[:3]
+            title = '2x ' + list(df.columns)[int(selected_index[1])] + ' minus ' \
+                    + list(df.columns)[int(selected_index[0])] + ' minus ' \
+                    + list(df.columns)[int(selected_index[2])]
+
+        if len(selected_index) == 3:
+
+            wing1 = (bonds[int(min(selected_index))])
+            wing1_vals = df[wing1].dropna()
+            belly = (bonds[int(statistics.median(selected_index))])
+            belly_vals = df[belly].dropna()
+            wing2 = (bonds[int(max(selected_index))])
+            wing2_vals = df[wing2].dropna()
+
+            yvals = 2*belly_vals - wing1_vals - wing2_vals
+
+            title = '2x '+ list(df.columns)[int(selected_index[1])] +' minus '\
+                    +list(df.columns)[int(selected_index[0])]+' minus '\
+                    +list(df.columns)[int(selected_index[2])]
+
+
+        if len(selected_index) == 2:
+            wing1 = (bonds[int(min(selected_index))])
+            print(wing1)
+            wing1_vals = df[wing1].dropna()
+            wing2 = (bonds[int(max(selected_index))])
+            wing2_vals = df[wing2].dropna()
+
+            yvals = wing2_vals - wing1_vals
+            title = list(df.columns)[int(selected_index[1])] +' minus '\
+                    +list(df.columns)[int(selected_index[0])]
+
+        if len(selected_index) == 1:
+            wing1 = bonds[int(selected_index[0])]
+            wing1_vals = df[wing1].dropna()
+            yvals = wing1_vals
+            title = list(df.columns)[int(selected_index[0])]
+
+
+        xvals = df.index
         yvals = pd.Series(yvals)
         new_data = {'x_values': xvals, 'y_values': yvals}
         hist_chart_ds.data = new_data
@@ -199,7 +231,6 @@ def main():
         new_patch_data = {'x_values': patch_x_vals[:], 'y_values': patch_y_vals[:]}
         hist_patch_ds.data = new_patch_data
         # update chart columns with text
-        title = list(df.columns)[int(selected_index[0])]
         hist_chart_plot.title.text = title
 
 
